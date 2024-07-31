@@ -1,7 +1,17 @@
 import enum
+
+from marshmallow import ValidationError
 from core import db
 from core.apis.decorators import AuthPrincipal
+from core.apis.validators.assignment_validators import (
+    validate_already_submitted,
+    validate_content,
+    validate_grade_assignment_by_teacher,
+    validate_grade_choice,
+    validate_grade_for_draft,
+)
 from core.libs import helpers, assertions
+from core.libs.exceptions import FyleError
 from core.models.teachers import Teacher
 from core.models.students import Student
 from sqlalchemy.types import Enum as BaseEnum
@@ -50,9 +60,10 @@ class Assignment(db.Model):
             assertions.assert_found(assignment, 'No assignment with this id was found')
             assertions.assert_valid(assignment.state == AssignmentStateEnum.DRAFT,
                                     'only assignment in draft state can be edited')
-
+            validate_content(assignment_new)
             assignment.content = assignment_new.content
         else:
+            validate_content(assignment_new)
             assignment = assignment_new
             db.session.add(assignment_new)
 
@@ -65,19 +76,24 @@ class Assignment(db.Model):
         assertions.assert_found(assignment, 'No assignment with this id was found')
         assertions.assert_valid(assignment.student_id == auth_principal.student_id, 'This assignment belongs to some other student')
         assertions.assert_valid(assignment.content is not None, 'assignment with empty content cannot be submitted')
+        validate_already_submitted(assignment)
 
         assignment.teacher_id = teacher_id
+        assignment.state = AssignmentStateEnum.SUBMITTED
         db.session.flush()
 
         return assignment
-
 
     @classmethod
     def mark_grade(cls, _id, grade, auth_principal: AuthPrincipal):
         assignment = Assignment.get_by_id(_id)
         assertions.assert_found(assignment, 'No assignment with this id was found')
-        assertions.assert_valid(grade is not None, 'assignment with empty grade cannot be graded')
-
+        validate_grade_for_draft(assignment)
+        validate_grade_assignment_by_teacher(assignment, auth_principal)
+        validate_grade_choice(grade)
+        assertions.assert_valid(
+            grade is not None, "assignment with empty grade cannot be graded"
+        )
         assignment.grade = grade
         assignment.state = AssignmentStateEnum.GRADED
         db.session.flush()
@@ -89,5 +105,8 @@ class Assignment(db.Model):
         return cls.filter(cls.student_id == student_id).all()
 
     @classmethod
-    def get_assignments_by_teacher(cls):
-        return cls.query.all()
+    def get_assignments_by_teacher(cls, teacher_id=None):
+        """Retrieve assignments assigned to a specific teacher."""
+        if teacher_id is None:
+            return cls.query.all()
+        return cls.filter(cls.teacher_id == teacher_id).all()

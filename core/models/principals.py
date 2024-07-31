@@ -11,3 +11,11 @@ class Principal(db.Model):
 
     def __repr__(self):
         return '<Principal %r>' % self.id
+
+    @classmethod
+    def get_all_principals(cls):
+        return cls.query.all()
+
+    @classmethod
+    def get_by_id(cls, _id):
+        return cls.query.filter_by(id=_id).first()
