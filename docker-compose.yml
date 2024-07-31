@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    command: gunicorn -c gunicorn_config.py core.server:app
+    volumes:
+      - .:/app
+    ports:
+      - "7755:7755"
+    environment:
+      - FLASK_APP=core/server.py
+      - FLASK_ENV=production
+    depends_on:
+      - db
+
+  db:
+    image: nouchka/sqlite3:latest
+    volumes:
+      - sqlite-data:/data
+
+volumes:
+  sqlite-data:
